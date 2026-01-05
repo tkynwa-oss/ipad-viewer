@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>iPad Image Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        :root {
+            --safe-area-inset-top: env(safe-area-inset-top, 0px);
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            margin: 0;
+            overflow-x: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #drop-zone-initial {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #121212;
+            z-index: 2000;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .big-btn {
+            background: #bb86fc;
+            color: black;
+            border: none;
+            padding: 24px 48px;
+            font-size: 1.6rem;
+            border-radius: 16px;
+            cursor: pointer;
+            margin: 30px 0;
+            font-weight: bold;
+            box-shadow: 0 10px 20px rgba(187, 134, 252, 0.3);
+        }
+
+        /* Gallery Full Width */
+        #content-area {
+            width: 100vw;
+            height: 100vh;
+            padding-top: var(--safe-area-inset-top);
+        }
+
+        #gallery-view {
+            padding: 20px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
+            padding-bottom: 50px;
+        }
+
+        /* Full Screen Viewer Modal */
+        #viewer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 3000;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            /* Prevent browser scroll */
+        }
+
+        #viewer-overlay.active {
+            display: flex;
+        }
+
+        .view-canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #modal-image,
+        #modal-video {
+            max-width: 100%;
+            max-height: 100%;
+            transition: transform 0.1s ease-out;
+            pointer-events: none;
+            /* Touch handled by container */
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 40px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            font-size: 24px;
+            z-index: 3100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            width: 60px;
+            height: 100px;
+            font-size: 30px;
+            z-index: 3100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+        }
+
+        .modal-nav-btn.prev {
+            left: 20px;
+        }
+
+        .modal-nav-btn.next {
+            right: 20px;
+        }
+
+        .modal-nav-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .pen-btn {
+            position: absolute;
+            top: 40px;
+            left: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            font-size: 24px;
+            z-index: 3100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .pen-btn.active,
+        .eraser-btn.active {
+            background: #bb86fc;
+            color: black;
+        }
+
+        .eraser-btn {
+            position: absolute;
+            top: 40px;
+            left: 90px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            font-size: 24px;
+            z-index: 3100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .color-picker-container {
+            position: absolute;
+            top: 40px;
+            left: 150px;
+            z-index: 3100;
+        }
+
+        #color-input {
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 0;
+            overflow: hidden;
+            -webkit-appearance: none;
+        }
+
+        #color-input::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        #color-input::-webkit-color-swatch {
+            border: 2px solid white;
+            border-radius: 25px;
+        }
+
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            /* Controlled by script when pen active */
+            z-index: 5;
+        }
+
+        .nav-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.9rem;
+            pointer-events: none;
+        }
+
+        .image-card img {
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+
+<body class="app-body">
+    <!-- Initial Folder Selector -->
+    <div id="drop-zone-initial">
+        <h1 style="font-size: 2.8rem; margin-bottom: 20px;">iPad Viewer</h1>
+        <p style="color: #888;">端末内のフォルダを選択して開始してください。</p>
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none;">
+        <button class="big-btn" onclick="document.getElementById('folder-input').click()">フォルダを開く</button>
+    </div>
+
+    <div id="content-area">
+        <div id="gallery-view">
+            <header style="margin-bottom: 30px; padding: 0 10px;">
+                <h1 id="gallery-title" style="font-size: 2rem;">Gallery</h1>
+                <button onclick="location.reload()"
+                    style="background:none; border:1px solid #444; color:#888; border-radius:8px; padding:5px 15px;">Change
+                    Folder</button>
+            </header>
+            <main id="gallery-grid" class="main-grid"></main>
+        </div>
+    </div>
+
+    <!-- The "Separate Window" Overlay -->
+    <div id="viewer-overlay">
+        <button class="close-btn" onclick="closeViewer()">×</button>
+        <button id="pen-toggle" class="pen-btn active" onclick="setTool('pen')">✏️</button>
+        <button id="eraser-toggle" class="eraser-btn" onclick="setTool('eraser')">🧽</button>
+        <div class="color-picker-container">
+            <input type="color" id="color-input" value="#bb86fc">
+        </div>
+        <button class="modal-nav-btn prev" onclick="goPrev()">❮</button>
+        <button class="modal-nav-btn next" onclick="goNext()">❯</button>
+        <div class="view-canvas-container" id="gestures-container">
+            <div id="canvas-wrapper"
+                style="position:relative; display:flex; align-items:center; justify-content:center;">
+                <img id="modal-image" src="" style="display:none;">
+                <canvas id="drawing-canvas"></canvas>
+            </div>
+            <video id="modal-video" controls style="display:none;"></video>
+            <iframe id="modal-pdf"
+                style="display:none; width:90%; height:90%; border:none; border-radius:12px;"></iframe>
+        </div>
+        <div class="nav-hint">左右にスワイプで移動 / ピンチで拡大 / ペンで書き込み</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
