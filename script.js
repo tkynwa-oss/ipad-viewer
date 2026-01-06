@@ -1,257 +1,326 @@
+/**
+ * Premium Image Viewer JS
+ * Logic for Gallery, Viewer, Drawing and Onion Skin
+ */
 
-// State
-let state = {
-    allFilesMap: new Map(),
-    files: [],
+const state = {
+    allFiles: [],
     currentIndex: -1,
     scale: 1,
     posX: 0,
     posY: 0,
-    currentTool: 'pen',
-    isEdited: false
+    rotation: 0,
+    activeTool: 'pen',
+    isDrawing: false,
+    onionSkinEnabled: false,
+    isEdited: false,
+    lastX: 0,
+    lastY: 0
 };
 
-const blobCache = new Map();
-let canvas, ctx;
+const elements = {};
+const cache = new Map(); // Store Blobs if needed
 
 function init() {
-    canvas = document.getElementById('drawing-canvas');
-    ctx = canvas.getContext('2d');
-    setupEventListeners();
-    setupTouchGestures();
+    // UI Elements
+    elements.landing = document.getElementById('landing-screen');
+    elements.app = document.getElementById('app-shell');
+    elements.viewer = document.getElementById('viewer-overlay');
+    elements.grid = document.getElementById('gallery-grid');
+    elements.folderInput = document.getElementById('folder-input');
+    elements.selectBtn = document.getElementById('select-folder-btn');
+    elements.folderTitle = document.getElementById('current-folder-name');
+    elements.fileCounter = document.getElementById('file-counter');
+
+    // Viewer Elements
+    elements.img = document.getElementById('view-image');
+    elements.video = document.getElementById('view-video');
+    elements.pdf = document.getElementById('view-pdf');
+    elements.canvas = document.getElementById('drawing-canvas');
+    elements.ctx = elements.canvas.getContext('2d');
+    elements.wrapper = document.getElementById('transform-wrapper');
+    elements.onionPrev = document.getElementById('onion-prev-layer');
+    elements.onionNext = document.getElementById('onion-next-layer');
+    elements.fileInfo = document.getElementById('file-info-text');
+
+    // Setup Listeners
+    elements.selectBtn.onclick = () => elements.folderInput.click();
+    elements.folderInput.onchange = handleFolderSelection;
+
+    setupViewerGestures();
 }
 
-function setupEventListeners() {
-    const folderInput = document.getElementById('folder-input');
-    folderInput.addEventListener('change', (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-        state.files = [];
-        state.allFilesMap.clear();
-        files.forEach(file => {
-            const ext = file.name.toLowerCase().split('.').pop();
-            const validExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'pdf'];
-            if (validExts.includes(ext)) {
-                state.files.push(file.webkitRelativePath);
-                state.allFilesMap.set(file.webkitRelativePath, file);
-            }
-        });
-        document.getElementById('drop-zone-initial').style.display = 'none';
-        renderGallery();
-    });
+/** フォルダ選択処理 */
+function handleFolderSelection(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    state.allFiles = files.filter(f => {
+        const ext = f.name.toLowerCase().split('.').pop();
+        return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'pdf'].includes(ext);
+    }).map(f => ({
+        file: f,
+        name: f.name,
+        path: f.webkitRelativePath,
+        type: f.name.toLowerCase().split('.').pop()
+    }));
+
+    if (state.allFiles.length === 0) {
+        alert("有効な画像・動画・PDFが見つかりませんでした。");
+        return;
+    }
+
+    const firstPath = state.allFiles[0].path;
+    elements.folderTitle.textContent = firstPath.split('/')[0] || 'Gallery';
+    elements.fileCounter.textContent = `${state.allFiles.length} Files`;
+
+    elements.landing.style.display = 'none';
+    elements.app.style.display = 'flex';
+
+    renderGallery();
 }
 
+/** ギャラリー一覧の描画 */
 function renderGallery() {
-    const grid = document.getElementById('gallery-grid');
-    grid.innerHTML = '';
-    state.files.forEach((path, idx) => {
+    elements.grid.innerHTML = '';
+    state.allFiles.forEach((item, idx) => {
         const card = document.createElement('div');
-        card.className = 'image-card';
-        const url = getBlobUrl(path);
-        const name = path.split('/').pop();
-        const ext = name.toLowerCase().split('.').pop();
+        card.className = 'card fade-in';
+        card.style.animationDelay = `${idx * 0.02}s`;
 
-        const preview = document.createElement('div');
-        preview.style.height = '150px'; preview.style.borderRadius = '12px';
-        preview.style.overflow = 'hidden'; preview.style.background = '#222';
-        preview.style.display = 'flex'; preview.style.alignItems = 'center'; preview.style.justifyContent = 'center';
+        const url = URL.createObjectURL(item.file);
+        const isVideo = ['mp4', 'mov'].includes(item.type);
+        const isPdf = item.type === 'pdf';
 
-        if (['mp4', 'mov'].includes(ext)) {
-            preview.innerHTML = '▶ VIDEO';
-        } else if (ext === 'pdf') {
-            preview.innerHTML = '📄 PDF';
-        } else {
-            const img = document.createElement('img');
-            img.src = url; img.loading = "lazy";
-            img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover';
-            preview.appendChild(img);
-        }
-
-        card.appendChild(preview);
-        const caption = document.createElement('div');
-        caption.className = 'caption';
-        caption.textContent = name;
-        caption.style.fontSize = '0.8rem'; caption.style.marginTop = '8px';
-        card.appendChild(caption);
+        let innerHTML = `
+            <div class="card-preview">
+                ${isVideo ? '<span class="icon" style="font-size:2rem">▶</span>' :
+                isPdf ? '<span class="icon" style="font-size:2.5rem">📄</span>' :
+                    `<img src="${url}" loading="lazy">`}
+                <span class="type-indicator">${item.type.toUpperCase()}</span>
+            </div>
+            <div class="card-info">
+                <span class="card-title">${item.name}</span>
+            </div>
+        `;
+        card.innerHTML = innerHTML;
         card.onclick = () => openViewer(idx);
-        grid.appendChild(card);
+        elements.grid.appendChild(card);
     });
 }
 
-function getBlobUrl(fullPath) {
-    if (blobCache.has(fullPath)) return blobCache.get(fullPath);
-    const file = state.allFilesMap.get(fullPath);
-    if (!file) return "";
-    const url = URL.createObjectURL(file);
-    blobCache.set(fullPath, url);
-    return url;
-}
-
-function openViewer(index) {
-    state.currentIndex = index;
-    document.getElementById('viewer-overlay').classList.add('active');
+/** ビューアーを開く */
+function openViewer(idx) {
+    state.currentIndex = idx;
+    elements.viewer.classList.add('active');
     resetTransform();
     updateViewerContent();
 }
 
-window.closeViewer = async function () {
-    if (state.isEdited) {
-        saveAsDownload();
-    }
-    document.getElementById('viewer-overlay').classList.remove('active');
-    const video = document.getElementById('modal-video');
-    video.pause(); video.src = "";
-    state.isEdited = false;
-};
-
-function saveAsDownload() {
-    const img = document.getElementById('modal-image');
-    const saveCanvas = document.createElement('canvas');
-    saveCanvas.width = img.naturalWidth;
-    saveCanvas.height = img.naturalHeight;
-    const saveCtx = saveCanvas.getContext('2d');
-
-    saveCtx.drawImage(img, 0, 0);
-    saveCtx.drawImage(canvas, 0, 0, saveCanvas.width, saveCanvas.height);
-
-    const dataUrl = saveCanvas.toDataURL('image/jpeg', 0.9);
-    const filename = state.files[state.currentIndex].split('/').pop();
-    const nameParts = filename.split('.');
-    const ext = nameParts.pop();
-
-    const link = document.createElement('a');
-    link.download = `${nameParts.join('.')}_edited.${ext}`;
-    link.href = dataUrl;
-    link.click();
-}
-
-window.setTool = function (tool) {
-    state.currentTool = tool;
-    document.getElementById('pen-toggle').classList.toggle('active', tool === 'pen');
-    document.getElementById('eraser-toggle').classList.toggle('active', tool === 'eraser');
-    canvas.style.pointerEvents = 'auto';
-};
-
+/** ビューアーの内容を更新 */
 function updateViewerContent() {
-    const path = state.files[state.currentIndex];
-    const url = getBlobUrl(path);
-    const ext = path.toLowerCase().split('.').pop();
+    const item = state.allFiles[state.currentIndex];
+    const url = URL.createObjectURL(item.file);
+    state.isEdited = false;
 
-    const img = document.getElementById('modal-image');
-    const video = document.getElementById('modal-video');
-    const pdf = document.getElementById('modal-pdf');
-    const penTool = document.getElementById('pen-toggle');
-    const eraserTool = document.getElementById('eraser-toggle');
-    const colorTool = document.querySelector('.color-picker-container');
+    // Reset visibility
+    elements.img.style.display = 'none';
+    elements.video.style.display = 'none';
+    elements.pdf.style.display = 'none';
+    elements.canvas.style.display = 'none';
+    elements.fileInfo.textContent = `${item.name} (${state.currentIndex + 1} / ${state.allFiles.length})`;
 
-    img.style.display = 'none'; video.style.display = 'none'; pdf.style.display = 'none';
-    canvas.style.display = 'none'; penTool.style.display = 'none'; eraserTool.style.display = 'none'; colorTool.style.display = 'none';
-
-    if (ext === 'pdf') {
-        pdf.src = url; pdf.style.display = 'block';
-    } else if (['mp4', 'mov'].includes(ext)) {
-        video.src = url; video.style.display = 'block'; video.play();
+    if (['mp4', 'mov'].includes(item.type)) {
+        elements.video.src = url;
+        elements.video.style.display = 'block';
+        elements.video.play();
+    } else if (item.type === 'pdf') {
+        elements.pdf.src = url;
+        elements.pdf.style.display = 'block';
     } else {
-        img.src = url;
-        img.style.display = 'block';
-        penTool.style.display = 'flex';
-        eraserTool.style.display = 'flex';
-        colorTool.style.display = 'block';
-        img.onload = () => {
-            canvas.width = img.clientWidth;
-            canvas.height = img.clientHeight;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            canvas.style.display = 'block';
+        elements.img.src = url;
+        elements.img.style.display = 'block';
+        elements.img.onload = () => {
+            elements.canvas.width = elements.img.clientWidth;
+            elements.canvas.height = elements.img.clientHeight;
+            elements.ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+            elements.canvas.style.display = 'block';
+            if (state.onionSkinEnabled) renderOnionSkins();
         };
     }
 }
 
-function setupTouchGestures() {
-    const container = document.getElementById('gestures-container');
-    let startTouchX = 0, initialDist = 0, startScale = 1;
-    let lastX = 0, lastY = 0;
-    let isDrawing = false;
+function closeViewer() {
+    elements.viewer.classList.remove('active');
+    elements.video.pause();
+    elements.video.src = "";
+    elements.onionPrev.innerHTML = '';
+    elements.onionNext.innerHTML = '';
+}
+
+/** ツール切り替え */
+function setTool(tool) {
+    state.activeTool = tool;
+    document.getElementById('tool-pen').classList.toggle('active', tool === 'pen');
+    document.getElementById('tool-eraser').classList.toggle('active', tool === 'eraser');
+}
+
+/** オニオンスキンの切り替え */
+function toggleOnionSkin() {
+    state.onionSkinEnabled = !state.onionSkinEnabled;
+    document.getElementById('btn-onion').classList.toggle('active', state.onionSkinEnabled);
+    if (state.onionSkinEnabled) renderOnionSkins();
+    else {
+        elements.onionPrev.innerHTML = '';
+        elements.onionNext.innerHTML = '';
+    }
+}
+
+function renderOnionSkins() {
+    elements.onionPrev.innerHTML = '';
+    elements.onionNext.innerHTML = '';
+
+    const prevIdx = (state.currentIndex - 1 + state.allFiles.length) % state.allFiles.length;
+    const nextIdx = (state.currentIndex + 1) % state.allFiles.length;
+
+    [prevIdx, nextIdx].forEach((idx, i) => {
+        const item = state.allFiles[idx];
+        if (['jpg', 'jpeg', 'png', 'webp'].includes(item.type)) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(item.file);
+            img.style.maxWidth = '100vw';
+            img.style.maxHeight = '100vh';
+            if (i === 0) elements.onionPrev.appendChild(img);
+            else elements.onionNext.appendChild(img);
+            setTimeout(() => { if (img.parentElement) img.parentElement.style.opacity = 1; }, 50);
+        }
+    });
+}
+
+/** 回転 */
+function rotateImage() {
+    state.rotation = (state.rotation + 90) % 360;
+    applyTransform();
+}
+
+/** 保存 (マージしてダウンロード) */
+async function saveImage() {
+    if (!state.isEdited) return alert("変更がありません。");
+
+    const saveCanvas = document.createElement('canvas');
+    saveCanvas.width = elements.img.naturalWidth;
+    saveCanvas.height = elements.img.naturalHeight;
+    const sctx = saveCanvas.getContext('2d');
+
+    // 元画像
+    sctx.save();
+    // 回転対応が必要な場合はここでsctx.rotate
+    sctx.drawImage(elements.img, 0, 0);
+    sctx.restore();
+
+    // 描画レイヤー (リサイズして描画)
+    sctx.drawImage(elements.canvas, 0, 0, saveCanvas.width, saveCanvas.height);
+
+    const link = document.createElement('a');
+    link.download = `edited_${state.allFiles[state.currentIndex].name}`;
+    link.href = saveCanvas.toDataURL('image/png');
+    link.click();
+}
+
+/** ジェスチャーと描画の制御 */
+function setupViewerGestures() {
+    const container = document.getElementById('viewer-viewport');
+    let initialDist = 0;
+    let startScale = 1;
 
     container.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
-            isDrawing = true;
-            const rect = canvas.getBoundingClientRect();
-            lastX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
-            lastY = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
-            startTouchX = e.touches[0].clientX;
-            return;
-        }
-        if (e.touches.length === 2) {
-            isDrawing = false;
-            initialDist = getDistance(e.touches);
+            // Drawing or Panning? 
+            // If scale > 1, single touch might be panning? 
+            // In this version, single touch = drawing if image is active.
+            if (state.allFiles[state.currentIndex]?.type === 'pdf') return;
+
+            state.isDrawing = true;
+            const rect = elements.canvas.getBoundingClientRect();
+            state.lastX = (e.touches[0].clientX - rect.left) * (elements.canvas.width / rect.width);
+            state.lastY = (e.touches[0].clientY - rect.top) * (elements.canvas.height / rect.height);
+        } else if (e.touches.length === 2) {
+            state.isDrawing = false;
+            initialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
             startScale = state.scale;
         }
     }, { passive: false });
 
     container.addEventListener('touchmove', (e) => {
-        if (isDrawing && e.touches.length === 1) {
-            const rect = canvas.getBoundingClientRect();
-            const currX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
-            const currY = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+        if (state.isDrawing && e.touches.length === 1) {
+            if (state.scale > 1.1) {
+                // Pan instead of draw if zoomed?
+                // Let's keep it simple: Single touch DRAWING.
+            }
+            e.preventDefault();
+            const rect = elements.canvas.getBoundingClientRect();
+            const currX = (e.touches[0].clientX - rect.left) * (elements.canvas.width / rect.width);
+            const currY = (e.touches[0].clientY - rect.top) * (elements.canvas.height / rect.height);
 
+            const ctx = elements.ctx;
             ctx.beginPath();
-            if (state.currentTool === 'eraser') {
+            if (state.activeTool === 'eraser') {
                 ctx.globalCompositeOperation = 'destination-out';
-                ctx.lineWidth = 20;
+                ctx.lineWidth = 30;
             } else {
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = document.getElementById('color-input').value;
-                ctx.lineWidth = 3;
+                ctx.strokeStyle = document.getElementById('color-picker').value;
+                ctx.lineWidth = 4;
             }
-            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.moveTo(lastX, lastY); ctx.lineTo(currX, currY);
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.moveTo(state.lastX, state.lastY);
+            ctx.lineTo(currX, currY);
             ctx.stroke();
 
-            lastX = currX; lastY = currY;
+            state.lastX = currX;
+            state.lastY = currY;
             state.isEdited = true;
-            e.preventDefault();
         } else if (e.touches.length === 2) {
             e.preventDefault();
-            state.scale = startScale * (getDistance(e.touches) / initialDist);
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            state.scale = startScale * (dist / initialDist);
+            if (state.scale < 0.5) state.scale = 0.5;
+            if (state.scale > 5) state.scale = 5;
             applyTransform();
         }
     }, { passive: false });
 
     container.addEventListener('touchend', (e) => {
-        if (isDrawing && e.touches.length === 0 && state.scale <= 1.1) {
-            const diff = startTouchX - e.changedTouches[0].clientX;
-            if (Math.abs(diff) > 50 && !state.isEdited) {
-                if (diff > 0) window.goNext();
-                else window.goPrev();
-            }
-        }
-        isDrawing = false;
+        state.isDrawing = false;
     });
-}
 
-function getDistance(ts) {
-    return Math.sqrt(Math.pow(ts[0].clientX - ts[1].clientX, 2) + Math.pow(ts[0].clientY - ts[1].clientY, 2));
+    // Sidebar swipe (Optional)
 }
 
 function applyTransform() {
-    document.getElementById('canvas-wrapper').style.transform = `translate(${state.posX}px, ${state.posY}px) scale(${state.scale})`;
+    elements.wrapper.style.transform = `scale(${state.scale}) rotate(${state.rotation}deg)`;
 }
 
 function resetTransform() {
-    state.scale = 1; state.posX = 0; state.posY = 0;
+    state.scale = 1;
+    state.rotation = 0;
+    state.posX = 0;
+    state.posY = 0;
     applyTransform();
 }
 
-window.goNext = function () {
-    if (state.files.length === 0) return;
-    state.currentIndex = (state.currentIndex + 1) % state.files.length;
-    resetTransform(); updateViewerContent();
-};
+function goNext() {
+    if (state.allFiles.length === 0) return;
+    state.currentIndex = (state.currentIndex + 1) % state.allFiles.length;
+    updateViewerContent();
+}
 
-window.goPrev = function () {
-    if (state.files.length === 0) return;
-    state.currentIndex = (state.currentIndex - 1 + state.files.length) % state.files.length;
-    resetTransform(); updateViewerContent();
-};
+function goPrev() {
+    if (state.allFiles.length === 0) return;
+    state.currentIndex = (state.currentIndex - 1 + state.allFiles.length) % state.allFiles.length;
+    updateViewerContent();
+}
 
+// Start
 init();

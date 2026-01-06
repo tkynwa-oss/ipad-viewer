@@ -1,14 +1,14 @@
 {
-    "name": "iPad Image Viewer",
-    "short_name": "ImageViewer",
+    "name": "Premium Viewer",
+    "short_name": "P-Viewer",
     "start_url": "index.html",
     "display": "standalone",
-    "background_color": "#121212",
-    "theme_color": "#121212",
+    "background_color": "#0a0a0c",
+    "theme_color": "#bb86fc",
     "icons": [
         {
-            "src": "icon-192.png",
-            "sizes": "192x192",
+            "src": "https://cdn-icons-png.flaticon.com/512/3342/3342137.png",
+            "sizes": "512x512",
             "type": "image/png"
         }
     ]
