@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -7,116 +7,499 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Premium Image Viewer</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>iPad Image Viewer Local</title>
+    <style>
+        :root {
+            --safe-area-inset-top: env(safe-area-inset-top, 0px);
+            --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+            --accent: #bb86fc;
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            margin: 0;
+            overflow-x: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #drop-zone-initial {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #121212;
+            z-index: 2000;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .big-btn {
+            background: var(--accent);
+            color: black;
+            border: none;
+            padding: 24px 48px;
+            font-size: 1.6rem;
+            border-radius: 16px;
+            cursor: pointer;
+            margin: 30px 0;
+            font-weight: bold;
+            box-shadow: 0 10px 20px rgba(187, 134, 252, 0.3);
+        }
+
+        #content-area {
+            width: 100vw;
+            height: 100vh;
+            padding-top: var(--safe-area-inset-top);
+        }
+
+        #gallery-view {
+            padding: 20px;
+            overflow-y: auto;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 15px;
+            padding-bottom: 50px;
+        }
+
+        .image-card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .image-card .caption {
+            padding: 8px;
+            font-size: 0.75rem;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #aaa;
+        }
+
+        /* Viewer Overlay */
+        #viewer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.98);
+            z-index: 3000;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+        }
+
+        #viewer-overlay.active {
+            display: flex;
+        }
+
+        .view-canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #modal-image {
+            max-width: 100%;
+            max-height: 100%;
+            pointer-events: none;
+        }
+
+        #drawing-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Controls */
+        .overlay-btn {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            font-size: 24px;
+            z-index: 3100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            transition: background 0.2s;
+        }
+
+        .overlay-btn:active {
+            background: var(--accent);
+            color: black;
+        }
+
+        .close-btn {
+            top: 40px;
+            right: 30px;
+        }
+
+        .pen-btn {
+            bottom: 40px;
+            left: 30px;
+        }
+
+        .eraser-btn {
+            bottom: 40px;
+            left: 90px;
+        }
+
+        .pen-btn.active,
+        .eraser-btn.active {
+            background: var(--accent);
+            color: black;
+        }
+
+        .color-picker {
+            position: absolute;
+            bottom: 40px;
+            left: 150px;
+            z-index: 3100;
+        }
+
+        #color-input {
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            border: 2px solid white;
+            background: none;
+            -webkit-appearance: none;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #color-input::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        #color-input::-webkit-color-swatch {
+            border: none;
+        }
+
+        .modal-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.3);
+            border: none;
+            width: 70px;
+            height: 120px;
+            font-size: 40px;
+            z-index: 3050;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 15px;
+        }
+
+        .modal-nav-btn.prev {
+            left: 10px;
+        }
+
+        .modal-nav-btn.next {
+            right: 10px;
+        }
+
+        .nav-hint {
+            position: absolute;
+            bottom: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 0.85rem;
+            pointer-events: none;
+        }
+    </style>
 </head>
 
 <body>
-    <!-- Initial Loading / Entry Screen -->
-    <div id="landing-screen" class="full-screen-center">
-        <div class="glass-card fade-in">
-            <h1 class="premium-title">Premium Viewer</h1>
-            <p class="subtitle">Next Generation Visual Tool for iPad & Web</p>
-            <button id="select-folder-btn" class="primary-btn">
-                <span class="icon">📁</span> Select Folder
-            </button>
-            <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none;">
-            <div class="footer-info">
-                Supported: Images, Videos, PDFs, Animated Drawing
-            </div>
+    <div id="drop-zone-initial">
+        <h1 style="font-size: 2.5rem; margin-bottom: 10px;">iPad Local Viewer</h1>
+        <p style="color: #666; font-size: 1rem; margin-bottom: 20px;">[単体完結・ローカル読込版]</p>
+        <button class="big-btn" onclick="document.getElementById('folder-input').click()">フォルダを選択して開始</button>
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none;">
+        <p style="font-size: 0.8rem; color: #444; max-width: 300px;">
+            このファイル自体をiPadの「ファイル」アプリで開き、ローカルのフォルダを指定して閲覧できます。
+        </p>
+    </div>
+
+    <div id="content-area">
+        <div id="gallery-view">
+            <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h1 id="gallery-title" style="margin:0; font-size: 1.5rem;">Gallery</h1>
+                <button onclick="location.reload()"
+                    style="background:#222; border:1px solid #444; color:#888; border-radius:6px; padding:6px 12px;">Reset</button>
+            </header>
+            <main id="gallery-grid" class="main-grid"></main>
         </div>
     </div>
 
-    <!-- Main Application UI -->
-    <div id="app-shell" style="display:none;">
-        <!-- Top Toolbar -->
-        <header class="app-toolbar glass">
-            <div class="toolbar-left">
-                <button class="icon-btn" onclick="location.reload()" title="Reset">
-                    <span class="icon">🏠</span>
-                </button>
-                <h1 id="current-folder-name" class="folder-name">Gallery</h1>
-            </div>
-            <div class="toolbar-right">
-                <div class="stats-badge" id="file-counter">0 Files</div>
-            </div>
-        </header>
-
-        <!-- Gallery Grid -->
-        <main id="gallery-container">
-            <div id="gallery-grid" class="image-grid"></div>
-        </main>
-    </div>
-
-    <!-- Lightbox / Viewer Overlay -->
-    <div id="viewer-overlay" class="overlay">
-        <!-- Viewer Toolbar -->
-        <div class="viewer-toolbar glass">
-            <button class="icon-btn back-btn" onclick="closeViewer()">
-                <span class="icon">✕</span>
+    <div id="viewer-overlay">
+        <button class="overlay-btn close-btn" onclick="closeViewer()">×</button>
+        <button id="pen-toggle" class="overlay-btn pen-btn active" onclick="setTool('pen')">✏️</button>
+        <button id="eraser-toggle" class="overlay-btn eraser-btn" onclick="setTool('eraser')">🧽</button>
+        <div class="color-picker">
+            <input type="color" id="color-input" value="#bb86fc">
         </div>
-        <div class="viewer-controls">
-            <button id="tool-pen" class="tool-btn active" onclick="setTool('pen')">
-                <span class="icon">✏️</span>
-                <span class="label">Pen</span>
-            </button>
-            <button id="tool-eraser" class="tool-btn" onclick="setTool('eraser')">
-                <span class="icon">🧽</span>
-                <span class="label">Eraser</span>
-            </button>
-            <div class="color-wrap">
-                <input type="color" id="color-picker" value="#bb86fc">
-            </div>
-            <div class="divider"></div>
-            <button id="btn-onion" class="tool-btn" onclick="toggleOnionSkin()">
-                <span class="icon">🧅</span>
-                <span class="label">Onion</span>
-            </button>
-            <button class="tool-btn" onclick="rotateImage()">
-                <span class="icon">🔄</span>
-                <span class="label">Rotate</span>
-            </button>
-        </div>
-        <div class="viewer-actions">
-            <button id="btn-save" class="icon-btn" onclick="saveImage()" title="Save">
-                <span class="icon">💾</span>
-            </button>
-        </div>
-    </div>
 
-    <!-- Content Area -->
-    <div id="viewer-viewport" class="viewport">
-        <!-- Onion Skin (Previous Image) -->
-        <div id="onion-prev-layer" class="onion-layer"></div>
+        <button class="modal-nav-btn prev" onclick="goPrev()">❮</button>
+        <button class="modal-nav-btn next" onclick="goNext()">❯</button>
 
-        <!-- Main Content Item -->
-        <div id="transform-wrapper">
-            <div id="content-item-container">
-                <img id="view-image" src="" alt="Viewer Content" style="display:none;">
-                <video id="view-video" controls style="display:none;"></video>
-                <iframe id="view-pdf" style="display:none;"></iframe>
+        <div class="view-canvas-container" id="gestures-container">
+            <div id="canvas-wrapper"
+                style="position:relative; display:flex; align-items:center; justify-content:center;">
+                <img id="modal-image" src="" style="display:none;">
                 <canvas id="drawing-canvas"></canvas>
             </div>
+            <video id="modal-video" controls style="display:none; max-width:95%; max-height:95%;"></video>
+            <iframe id="modal-pdf"
+                style="display:none; width:90%; height:90%; border:none; border-radius:12px; background:#fff;"></iframe>
         </div>
-
-        <!-- Onion Skin (Next Image) -->
-        <div id="onion-next-layer" class="onion-layer"></div>
+        <div class="nav-hint">Swipe to Move / Pinch to Zoom / Pen to Draw</div>
     </div>
 
-    <!-- Navigation -->
-    <button class="nav-arrow prev" onclick="goPrev()">❮</button>
-    <button class="nav-arrow next" onclick="goNext()">❯</button>
+    <script>
+        let state = {
+            allFilesMap: new Map(),
+            files: [],
+            currentIndex: -1,
+            scale: 1,
+            posX: 0,
+            posY: 0,
+            currentTool: 'pen',
+            isEdited: false
+        };
 
-    <div class="viewer-footer">
-        <span id="file-info-text">Filename.jpg</span>
-    </div>
-    </div>
+        const blobCache = new Map();
+        let canvas, ctx;
 
-    <script src="script.js"></script>
+        function init() {
+            canvas = document.getElementById('drawing-canvas');
+            ctx = canvas.getContext('2d');
+
+            document.getElementById('folder-input').addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+
+                state.files = [];
+                state.allFilesMap.clear();
+                files.forEach(file => {
+                    const ext = file.name.toLowerCase().split('.').pop();
+                    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'pdf'].includes(ext)) {
+                        state.files.push(file.webkitRelativePath);
+                        state.allFilesMap.set(file.webkitRelativePath, file);
+                    }
+                });
+
+                document.getElementById('drop-zone-initial').style.display = 'none';
+                renderGallery();
+            });
+
+            setupTouchGestures();
+        }
+
+        function renderGallery() {
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = '';
+            state.files.forEach((path, idx) => {
+                const card = document.createElement('div');
+                card.className = 'image-card';
+                const file = state.allFilesMap.get(path);
+                const url = URL.createObjectURL(file);
+                const name = path.split('/').pop();
+                const ext = name.toLowerCase().split('.').pop();
+
+                const preview = document.createElement('div');
+                preview.style.height = '140px'; preview.style.background = '#222';
+                preview.style.display = 'flex'; preview.style.alignItems = 'center'; preview.style.justifyContent = 'center';
+
+                if (['mp4', 'mov'].includes(ext)) {
+                    preview.innerHTML = '▶ VIDEO';
+                } else if (ext === 'pdf') {
+                    preview.innerHTML = '📄 PDF';
+                } else {
+                    const img = document.createElement('img');
+                    img.src = url; img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover';
+                    preview.appendChild(img);
+                }
+
+                card.appendChild(preview);
+                const caption = document.createElement('div');
+                caption.className = 'caption'; caption.textContent = name;
+                card.appendChild(caption);
+                card.onclick = () => openViewer(idx);
+                grid.appendChild(card);
+            });
+        }
+
+        function openViewer(index) {
+            state.currentIndex = index;
+            document.getElementById('viewer-overlay').classList.add('active');
+            resetTransform();
+            updateViewerContent();
+        }
+
+        function updateViewerContent() {
+            const path = state.files[state.currentIndex];
+            const file = state.allFilesMap.get(path);
+            const url = URL.createObjectURL(file);
+            const ext = path.toLowerCase().split('.').pop();
+
+            const img = document.getElementById('modal-image');
+            const video = document.getElementById('modal-video');
+            const pdf = document.getElementById('modal-pdf');
+            const tools = [document.getElementById('pen-toggle'), document.getElementById('eraser-toggle'), document.querySelector('.color-picker')];
+
+            img.style.display = 'none'; video.style.display = 'none'; pdf.style.display = 'none';
+            canvas.style.display = 'none';
+            tools.forEach(t => t.style.display = 'none');
+
+            if (ext === 'pdf') { pdf.src = url; pdf.style.display = 'block'; }
+            else if (['mp4', 'mov'].includes(ext)) { video.src = url; video.style.display = 'block'; video.play(); }
+            else {
+                img.src = url; img.style.display = 'block';
+                tools.forEach(t => t.style.display = 'flex');
+                img.onload = () => {
+                    canvas.width = img.clientWidth; canvas.height = img.clientHeight;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    canvas.style.display = 'block';
+                };
+            }
+        }
+
+        function closeViewer() {
+            if (state.isEdited) saveAsDownload();
+            document.getElementById('viewer-overlay').classList.remove('active');
+            const video = document.getElementById('modal-video');
+            video.pause(); video.src = "";
+            state.isEdited = false;
+        }
+
+        function saveAsDownload() {
+            const img = document.getElementById('modal-image');
+            const saveCanvas = document.createElement('canvas');
+            saveCanvas.width = img.naturalWidth; saveCanvas.height = img.naturalHeight;
+            const saveCtx = saveCanvas.getContext('2d');
+            saveCtx.drawImage(img, 0, 0);
+            saveCtx.drawImage(canvas, 0, 0, saveCanvas.width, saveCanvas.height);
+
+            const nameArr = state.files[state.currentIndex].split('/').pop().split('.');
+            const ext = nameArr.pop();
+            const link = document.createElement('a');
+            link.download = `${nameArr.join('.')}_edited.${ext}`;
+            link.href = saveCanvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+        }
+
+        function setTool(tool) {
+            state.currentTool = tool;
+            document.getElementById('pen-toggle').classList.toggle('active', tool === 'pen');
+            document.getElementById('eraser-toggle').classList.toggle('active', tool === 'eraser');
+        }
+
+        function setupTouchGestures() {
+            const container = document.getElementById('gestures-container');
+            let startTouchX = 0, initialDist = 0, startScale = 1;
+            let lastX = 0, lastY = 0;
+            let isDrawing = false;
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDrawing = true;
+                    const rect = canvas.getBoundingClientRect();
+                    lastX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
+                    lastY = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+                    startTouchX = e.touches[0].clientX;
+                } else if (e.touches.length === 2) {
+                    isDrawing = false;
+                    initialDist = Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2));
+                    startScale = state.scale;
+                }
+            }, { passive: false });
+
+            container.addEventListener('touchmove', (e) => {
+                if (isDrawing && e.touches.length === 1) {
+                    e.preventDefault();
+                    const rect = canvas.getBoundingClientRect();
+                    const currX = (e.touches[0].clientX - rect.left) * (canvas.width / rect.width);
+                    const currY = (e.touches[0].clientY - rect.top) * (canvas.height / rect.height);
+                    ctx.beginPath();
+                    if (state.currentTool === 'eraser') { ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = 20; }
+                    else { ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = document.getElementById('color-input').value; ctx.lineWidth = 3; }
+                    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                    ctx.moveTo(lastX, lastY); ctx.lineTo(currX, currY); ctx.stroke();
+                    lastX = currX; lastY = currY;
+                    state.isEdited = true;
+                } else if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const dist = Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2));
+                    state.scale = startScale * (dist / initialDist);
+                    applyTransform();
+                }
+            }, { passive: false });
+
+            container.addEventListener('touchend', (e) => {
+                if (isDrawing && e.touches.length === 0 && state.scale <= 1.1) {
+                    const diff = startTouchX - e.changedTouches[0].clientX;
+                    if (Math.abs(diff) > 60 && !state.isEdited) {
+                        if (diff > 0) goNext(); else goPrev();
+                    }
+                }
+                isDrawing = false;
+            });
+        }
+
+        function applyTransform() {
+            document.getElementById('canvas-wrapper').style.transform = `translate(${state.posX}px, ${state.posY}px) scale(${state.scale})`;
+        }
+
+        function resetTransform() {
+            state.scale = 1; state.posX = 0; state.posY = 0; applyTransform();
+        }
+
+        function goNext() {
+            if (state.files.length === 0) return;
+            state.currentIndex = (state.currentIndex + 1) % state.files.length;
+            resetTransform(); updateViewerContent();
+        }
+        function goPrev() {
+            if (state.files.length === 0) return;
+            state.currentIndex = (state.currentIndex - 1 + state.files.length) % state.files.length;
+            resetTransform(); updateViewerContent();
+        }
+
+        init();
+    </script>
 </body>
 
 </html>
